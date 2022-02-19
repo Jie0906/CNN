@@ -11,8 +11,9 @@ from peanut_class import peanut
 import pickle
 from sklearn.model_selection import train_test_split
 from keras.layers import *
+
 import pandas as pd
-from keras.models import Sequential, load_model
+from keras.models import Sequential, load_model, Model
 from keras.utils import np_utils
 import tensorflow as tf
 from sklearn.decomposition import PCA
@@ -328,5 +329,92 @@ print('Test:')
 print('Loss:', loss)
 print('Accuracy:', accuracy)
 
+#%% 1D+2D
+
+config = tf.compat.v1.ConfigProto(gpu_options=tf.compat.v1.GPUOptions(allow_growth=True))
+sess = tf.compat.v1.Session(config=config)
+
+img = np.load('img.npy',allow_pickle=True)
+ans = np.load('ans.npy',allow_pickle=True)
+ans = np_utils.to_categorical(ans)
+img_train, img_test, ans_train, ans_test = train_test_split( img, ans, test_size=0.4, random_state=45)
+
+
+a = Input((150, 150, 3))
+model_2D = Conv2D(16, kernel_size=(3, 3) , strides=(1,1), activation='relu',padding= 'same')(a)
+model_2D = Conv2D(32, kernel_size=(3, 3) , strides=(1,1), activation='relu',padding= 'same')(model_2D)
+model_2D = MaxPooling2D()(model_2D)
+
+
+
+
+
+model_1D = tf.reshape(model_2D,(-1,model_2D.shape[1]*model_2D.shape[2],model_2D.shape[3]))
+
+# 1
+model_1D = Conv1D(16, kernel_size= 3 , strides=1, activation='relu')(model_1D)
+model_1D = MaxPooling1D(pool_size= 2, strides=1)(model_1D)
+# 2
+model_1D = Conv1D(32, kernel_size= 3 , strides=1 , activation='relu')(model_1D)
+model_1D = MaxPooling1D(pool_size= 2, strides=1)(model_1D)
+# 3
+model_1D = Conv1D(64, kernel_size= 3 , strides=1 , activation='relu')(model_1D)
+model_1D = MaxPooling1D(pool_size= 2, strides=1)(model_1D)
+
+model_1D = Flatten()(model_1D)
+model_1D = Dense(2 , activation='softmax')(model_1D)
+
+# model_2D = Flatten()(model_2D)
+# model_2D = Dense(2 , activation='softmax')(model_2D)
+
+model_final = Model(inputs=a, outputs=model_1D)
+model_final.summary()
+model_final.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+MC = tf.keras.callbacks.ModelCheckpoint('model.h5', 
+                                     monitor='val_loss', 
+                                     verbose=0, 
+                                     save_best_only=True, 
+                                     mode='auto', 
+                                     period=1)
+ES = tf.keras.callbacks.EarlyStopping(monitor='val_loss', 
+                                   min_delta=0, 
+                                   patience=15, 
+                                   verbose=1, 
+                                   mode='auto', 
+                                   baseline=None, 
+                                   restore_best_weights=False)
+RL = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
+                                       factor=0.1, 
+                                       patience=5, 
+                                       verbose=1, 
+                                       mode='auto', 
+                                       min_delta=0.0001, 
+                                       cooldown=0, 
+                                       min_lr=10e-6)
+history = model_final.fit(img_train, ans_train, epochs=100, batch_size=16,validation_split = 0.3, verbose=1, callbacks=[MC, ES, RL])
+loss, accuracy = model_final.evaluate(img_test, ans_test)
+def show_train_history(history):
+    plt.figure()
+    plt.subplot(121)
+    plt.plot(history.history["accuracy"])
+    plt.plot(history.history["val_accuracy"])
+    plt.title("Train History accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss & Accuracy")
+    plt.legend(["train accuracy", "val accuracy"], loc=2)
+    plt.subplot(122)    
+    plt.plot(history.history["loss"])
+    plt.plot(history.history["val_loss"])
+    plt.title("Train History loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss & Accuracy")
+    plt.legend(["train loss", "val loss"], loc=2)
+    plt.show()
+
+show_train_history(history)
+print('Test:')
+print('Loss:', loss)
+print('Accuracy:', accuracy)
 
 
